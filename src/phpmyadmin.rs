@@ -23,6 +23,20 @@ fn random_hex_bytes(len: usize) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
+/// Non-Windows build support: without this the crate does not compile on
+/// Linux/macOS, so `cargo test` and `cargo clippy` cannot run there.
+#[cfg(not(windows))]
+fn random_hex_bytes(len: usize) -> Result<Vec<u8>> {
+    use std::io::Read;
+
+    let mut bytes = vec![0u8; len];
+    std::fs::File::open("/dev/urandom")
+        .context("opening /dev/urandom")?
+        .read_exact(&mut bytes)
+        .context("reading random bytes from /dev/urandom")?;
+    Ok(bytes)
+}
+
 pub fn phpmyadmin_dir(paths: &Paths) -> PathBuf {
     paths.phpmyadmin_dir()
 }

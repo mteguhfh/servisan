@@ -426,6 +426,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[cfg(windows)]
     #[test]
     fn available_drives_returns_at_least_c() {
         let drives = available_drives();

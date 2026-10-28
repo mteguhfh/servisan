@@ -44,9 +44,15 @@ pub fn detect_doc_root(target: &Path) -> (PathBuf, String) {
 
 /// Slugify folder name into a valid vhost name and suggested `.test` domain.
 pub fn suggest_name_and_domain(target: &Path) -> (String, String) {
+    // Separate from `file_name()` so a Windows path parsed on another host
+    // still yields the last folder instead of the whole string.
     let raw_name = target
-        .file_name()
-        .and_then(|n| n.to_str())
+        .to_str()
+        .unwrap_or_default()
+        .trim_end_matches(['\\', '/'])
+        .rsplit(['\\', '/'])
+        .next()
+        .filter(|name| !name.is_empty())
         .unwrap_or("project");
 
     let mut slug = String::new();

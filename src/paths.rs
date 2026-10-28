@@ -200,18 +200,21 @@ mod tests {
 
     #[test]
     fn derives_sub_paths_from_root() {
-        let p = Paths::new(r"D:\ServiSan");
-        assert_eq!(p.bin_dir(), PathBuf::from(r"D:\ServiSan\bin"));
-        assert_eq!(p.php_exe(), PathBuf::from(r"D:\ServiSan\bin\php\php.exe"));
+        // Build the expectation with join() so the test does not depend on the
+        // host separator (`D:\ServiSan` is one component on Unix).
+        let root = PathBuf::from("ServiSanRoot");
+        let p = Paths::new(root.as_path());
+        assert_eq!(p.bin_dir(), root.join("bin"));
+        assert_eq!(p.php_exe(), root.join("bin").join("php").join("php.exe"));
         assert_eq!(
             p.mysqld_exe(),
-            PathBuf::from(r"D:\ServiSan\bin\mysql\bin\mysqld.exe")
+            root.join("bin")
+                .join("mysql")
+                .join("bin")
+                .join("mysqld.exe")
         );
-        assert_eq!(
-            p.config_file(),
-            PathBuf::from(r"D:\ServiSan\config\app.toml")
-        );
-        assert_eq!(p.dashboard_dir(), PathBuf::from(r"D:\ServiSan\dashboard"));
+        assert_eq!(p.config_file(), root.join("config").join("app.toml"));
+        assert_eq!(p.dashboard_dir(), root.join("dashboard"));
     }
 
     #[test]
@@ -226,27 +229,33 @@ mod tests {
 
     #[test]
     fn prepends_servisan_dirs_before_existing_path() {
-        let p = Paths::new(r"D:\ServiSan");
-        let out = p.prepend_path(r"C:\Windows\system32");
-        let text = out.to_string_lossy();
-        assert!(text.starts_with(r"D:\ServiSan\bin\php;"));
-        assert!(text.contains(r"D:\ServiSan\bin\mysql\bin;"));
-        assert!(text.ends_with(r"C:\Windows\system32"));
-        assert_eq!(p.path_entries().len(), 2);
+        let p = Paths::new(std::env::temp_dir().join("servisan_paths_test"));
+        let out = p.prepend_path("existing-entry");
+        // split_paths() applies the platform separator, so the assertion holds
+        // on both Windows (`;`) and Unix (`:`).
+        let entries: Vec<PathBuf> = std::env::split_paths(&out).collect();
+        assert_eq!(
+            entries,
+            vec![
+                p.php_dir(),
+                p.mysql_dir().join("bin"),
+                PathBuf::from("existing-entry")
+            ]
+        );
     }
 
     #[test]
     fn prepend_path_handles_empty_current() {
-        let p = Paths::new(r"D:\ServiSan");
+        let p = Paths::new(std::env::temp_dir().join("servisan_paths_test"));
         let out = p.prepend_path("");
-        let text = out.to_string_lossy();
-        assert!(text.starts_with(r"D:\ServiSan\bin\php"));
-        assert!(!text.ends_with(PATH_SEP));
+        let entries: Vec<PathBuf> = std::env::split_paths(&out).collect();
+        assert_eq!(entries, p.path_entries());
+        assert!(!out.to_string_lossy().ends_with(PATH_SEP));
     }
 
     #[test]
     fn apply_path_env_sets_command_path() {
-        let p = Paths::new(r"D:\ServiSan");
+        let p = Paths::new(std::env::temp_dir().join("servisan_paths_test"));
         let mut cmd = std::process::Command::new("x");
         p.apply_path_env(&mut cmd);
 
@@ -257,8 +266,8 @@ mod tests {
             .expect("PATH env var applied");
         let path = path.expect("PATH set rather than cleared");
 
-        let text = path.to_string_lossy();
-        assert!(text.starts_with(r"D:\ServiSan\bin\php"));
-        assert!(text.contains(r"D:\ServiSan\bin\mysql\bin"));
+        let entries: Vec<PathBuf> = std::env::split_paths(&path).collect();
+        assert_eq!(entries.first(), Some(&p.php_dir()));
+        assert!(entries.contains(&p.mysql_dir().join("bin")));
     }
 }

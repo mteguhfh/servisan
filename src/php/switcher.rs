@@ -93,9 +93,15 @@ pub fn get_available_download_targets(installed: &[PhpVersionCandidate]) -> Vec<
 
 /// Detect PHP version string from directory name or `php.exe -v`.
 pub fn detect_php_version_string(php_dir: &Path) -> String {
+    // Split on both separators: a Windows path can arrive as a config value
+    // while the host is not Windows, where `file_name()` would keep the whole
+    // string.
     let dirname = php_dir
-        .file_name()
-        .and_then(|n| n.to_str())
+        .to_str()
+        .unwrap_or_default()
+        .trim_end_matches(['\\', '/'])
+        .rsplit(['\\', '/'])
+        .next()
         .unwrap_or_default();
 
     // Check directory name first (e.g. php-8.3.36-Win32-vs16-x64, php-8.3.36, php8.3.30)

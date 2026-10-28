@@ -40,7 +40,7 @@ function detectVhost() {
     btn.innerHTML = '<span class="inline-spinner"></span> Memeriksa...';
     btn.disabled = true;
 
-    fetch('?action=vhost_detect&path=' + encodeURIComponent(rawPath))
+    apiFetch('?action=vhost_detect&path=' + encodeURIComponent(rawPath))
         .then(function(r) { return r.json(); })
         .then(function(data) {
             btn.innerHTML = origHtml;
@@ -89,7 +89,7 @@ function submitAddVhost() {
     if (name) formData.append('name', name);
     if (domain) formData.append('domain', domain);
 
-    fetch('?action=vhost_add', {
+    apiFetch('?action=vhost_add', {
         method: 'POST',
         body: formData,
     })
@@ -121,7 +121,7 @@ function loadVhosts() {
 
     listEl.innerHTML = '<div style="text-align:center;padding:16px;color:#64748b;font-size:12.5px;">Memuat daftar virtual host...</div>';
 
-    fetch('?action=vhost_list')
+    apiFetch('?action=vhost_list')
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (!data.ok) {
@@ -217,7 +217,7 @@ function loadVhosts() {
 function openProjectFolder(path) {
     const formData = new FormData();
     formData.append('path', path);
-    fetch('?action=open_project_folder', { method: 'POST', body: formData })
+    apiFetch('?action=open_project_folder', { method: 'POST', body: formData })
         .then(function() { showToast('Membuka folder project di Explorer...'); })
         .catch(function() {});
 }
@@ -225,7 +225,7 @@ function openProjectFolder(path) {
 function openProjectTerminal(path) {
     const formData = new FormData();
     formData.append('path', path);
-    fetch('?action=open_project_terminal', { method: 'POST', body: formData })
+    apiFetch('?action=open_project_terminal', { method: 'POST', body: formData })
         .then(function() { showToast('Membuka terminal shell di direktori project...'); })
         .catch(function() {});
 }
@@ -238,7 +238,7 @@ function deleteVhost(name, domain) {
     const formData = new FormData();
     formData.append('target', name);
 
-    fetch('?action=vhost_remove', {
+    apiFetch('?action=vhost_remove', {
         method: 'POST',
         body: formData,
     })

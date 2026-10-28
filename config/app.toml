@@ -1,5 +1,7 @@
 [general]
 web_root = "www"
+# Keep this on 127.0.0.1 unless you really need LAN access: the dashboard
+# refuses local actions for non-loopback clients.
 host = "127.0.0.1"
 auto_open_browser = true
 auto_start_all = true

@@ -1,10 +1,14 @@
 <?php
 
-// Handle phpinfo request
-if (isset($_GET['phpinfo'])) {
-    phpinfo();
-    exit;
-}
+declare(strict_types=1);
+
+// The dashboard can spawn local processes, so keep responses private and
+// stop them from being framed or cached.
+header('Cache-Control: no-store, max-age=0');
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: DENY');
+header('Referrer-Policy: no-referrer');
+header("Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://api.github.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
 
 // The Rust manager injects these so the dashboard reflects app.toml
 // and Cargo.toml instead of keeping a second copy of the values.
@@ -13,8 +17,31 @@ $mysqlPort = (int) (getenv('SERVISAN_MYSQL_PORT') ?: 3307);
 $mysqlUser = 'root';
 $mysqlPass = '';
 $servisanVersion = getenv('SERVISAN_VERSION') ?: '0.2.0';
+
+// Dashboard actions spawn processes, so they are limited to requests from
+// this computer and must carry the per-run token injected by the manager.
+$remoteAddr = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
+if ($remoteAddr === '') {
+    // CLI (tests) has filesystem access already; treat it as local.
+    $remoteAddr = '127.0.0.1';
+}
+$isLoopbackRequest = $remoteAddr === '::1' || preg_match('/^127\./', $remoteAddr) === 1;
+$dashboardToken = (string) (getenv('SERVISAN_DASHBOARD_TOKEN') ?: '');
+$actionsEnabled = $isLoopbackRequest && $dashboardToken !== '';
+
 // Load shared helpers
 require_once __DIR__ . '/includes/helpers.php';
+
+// phpinfo() exposes paths and environment variables, so keep it local.
+if (isset($_GET['phpinfo'])) {
+    if (!$isLoopbackRequest) {
+        http_response_code(403);
+        echo 'phpinfo() is only available from this computer.';
+        exit;
+    }
+    phpinfo();
+    exit;
+}
 
 $servisanHome = get_servisan_home();
 $pmaInstalled = is_dir($servisanHome . '/www/phpmyadmin');
@@ -62,6 +89,15 @@ sort($extensions);
 <body>
 
 <main class="app-main">
+<?php if (!$actionsEnabled): ?>
+<div class="dashboard-warning" role="alert">
+    <?php if (!$isLoopbackRequest): ?>
+        Dashboard ini dibuka dari mesin lain. Aksi dashboard (terminal, logs, migrasi) dinonaktifkan.
+    <?php else: ?>
+        Aksi dashboard (terminal, logs, migrasi) dinonaktifkan karena token Servisan tidak tersedia. Jalankan Servisan lalu buka dashboard dari tray.
+    <?php endif; ?>
+</div>
+<?php endif; ?>
 <div class="laragon-window">
     <!-- Top Bar Header -->
     <header class="top-bar">
@@ -380,6 +416,8 @@ include __DIR__ . '/views/modals/overlay-shutdown.php';
     window.SERVISAN_DOC_ROOT = <?= json_encode($docRoot, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
     window.SERVISAN_VERSION = <?= json_encode($servisanVersion, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
     window.SERVISAN_PORT = <?= isset($_SERVER['SERVER_PORT']) ? (int)$_SERVER['SERVER_PORT'] : 8080 ?>;
+    window.SERVISAN_DASHBOARD_TOKEN = <?= json_encode($dashboardToken, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+    window.SERVISAN_ACTIONS_ENABLED = <?= $actionsEnabled ? 'true' : 'false' ?>;
     var CURRENT_VERSION = window.SERVISAN_VERSION;
     // Development mode check: skip automated update queries in dev
     if (CURRENT_VERSION === 'dev') {

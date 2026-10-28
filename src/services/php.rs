@@ -7,6 +7,27 @@ use crate::config::Config;
 use crate::paths::Paths;
 use crate::process::ManagedChild;
 
+/// Fresh token per server start. The dashboard echoes it back in the
+/// `X-Servisan-Token` header, so a page on another origin cannot drive the
+/// local command endpoints even though they listen on 127.0.0.1.
+fn dashboard_token() -> String {
+    use std::collections::hash_map::RandomState;
+    use std::hash::{BuildHasher, Hasher};
+
+    let mut token = String::with_capacity(32);
+    for _ in 0..2 {
+        let mut hasher = RandomState::new().build_hasher();
+        hasher.write_u128(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_nanos())
+                .unwrap_or_default(),
+        );
+        token.push_str(&format!("{:016x}", hasher.finish()));
+    }
+    token
+}
+
 /// How PHP is served. The MVP ships only [`BuiltinServer`]; `Nginx`/`Apache`
 /// engines can be added later without touching the service lifecycle code.
 pub trait HttpEngine {
@@ -58,6 +79,7 @@ impl HttpEngine for BuiltinServer {
         cmd.env("SERVISAN_MYSQL_HOST", "127.0.0.1");
         cmd.env("SERVISAN_MYSQL_PORT", cfg.mysql.port.to_string());
         cmd.env("SERVISAN_VERSION", crate::VERSION);
+        cmd.env("SERVISAN_DASHBOARD_TOKEN", dashboard_token());
         paths.apply_path_env(&mut cmd);
         cmd
     }
@@ -166,6 +188,24 @@ mod tests {
             command_env(&cmd, "SERVISAN_VERSION"),
             Some(crate::VERSION.to_string())
         );
+        let token = command_env(&cmd, "SERVISAN_DASHBOARD_TOKEN").expect("dashboard token");
+        assert_eq!(token.len(), 32, "dashboard token should be 32 hex chars");
+    }
+
+    #[test]
+    fn dashboard_token_is_fresh_for_every_start() {
+        let paths = Paths::new(r"D:\ServiSan");
+        let cfg = cfg_for(Path::new("www"), 8080);
+        let first = command_env(
+            &BuiltinServer.command(&paths, &cfg),
+            "SERVISAN_DASHBOARD_TOKEN",
+        );
+        let second = command_env(
+            &BuiltinServer.command(&paths, &cfg),
+            "SERVISAN_DASHBOARD_TOKEN",
+        );
+        assert!(first.is_some());
+        assert_ne!(first, second);
     }
 
     #[test]
@@ -181,11 +221,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn dashboard_renders_when_mysql_is_offline() {
+    fn run_php_test(name: &str) {
         let script = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests")
-            .join("dashboard_offline.php");
+            .join(name);
         let output = match std::process::Command::new("php").arg(&script).output() {
             Ok(output) => output,
             Err(_) => {
@@ -196,10 +235,25 @@ mod tests {
 
         assert!(
             output.status.success(),
-            "dashboard regression test failed:\n{}{}",
+            "{name} failed:\n{}{}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+
+    #[test]
+    fn dashboard_renders_when_mysql_is_offline() {
+        run_php_test("dashboard_offline.php");
+    }
+
+    #[test]
+    fn dashboard_actions_require_loopback_post_and_token() {
+        run_php_test("dashboard_security.php");
+    }
+
+    #[test]
+    fn dashboard_cli_args_never_pass_through_a_shell() {
+        run_php_test("dashboard_cli.php");
     }
 
     #[test]

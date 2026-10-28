@@ -1,5 +1,16 @@
 // ServiSan Dashboard Core Client Logic
 
+// Every dashboard action is gated on the per-run token the Rust manager
+// injects, so route action requests through this helper instead of fetch().
+function apiFetch(url, options) {
+    var opts = Object.assign({}, options || {});
+    opts.headers = Object.assign({}, opts.headers || {});
+    if (window.SERVISAN_DASHBOARD_TOKEN) {
+        opts.headers['X-Servisan-Token'] = window.SERVISAN_DASHBOARD_TOKEN;
+    }
+    return fetch(url, opts);
+}
+
 function confirmShutdown() {
     const menu = document.getElementById('dropdownMenu');
     const wrapper = document.querySelector('.dock-menu-wrapper');
@@ -15,7 +26,7 @@ function confirmShutdown() {
         overlay.style.display = 'flex';
     }
 
-    fetch('?action=shutdown')
+    apiFetch('?action=shutdown', { method: 'POST' })
         .then(function() {
             setTimeout(function() {
                 window.close();
@@ -76,7 +87,7 @@ function copyCommand() {
 var docRootPath = window.SERVISAN_DOC_ROOT || '';
 
 function openTerminal() {
-    fetch('?action=open_terminal')
+    apiFetch('?action=open_terminal', { method: 'POST' })
         .then(function(res) {
             if (res.ok) {
                 showToast('Membuka Servisan Terminal Shell...');
@@ -109,7 +120,7 @@ function switchLogTab(type) {
 function loadLogs(type) {
     const consoleEl = document.getElementById('logConsole');
     consoleEl.textContent = 'Memuat 50 log terakhir (' + type + '.log)...';
-    fetch('?action=get_logs&type=' + encodeURIComponent(type))
+    apiFetch('?action=get_logs&type=' + encodeURIComponent(type))
         .then(function(res) { return res.json(); })
         .then(function(data) {
             if (data.ok) {
@@ -125,7 +136,7 @@ function loadLogs(type) {
 }
 
 function openRoot() {
-    fetch('?action=open_root')
+    apiFetch('?action=open_root', { method: 'POST' })
         .then(function(res) {
             if (res.ok) {
                 showToast('Membuka folder www di File Explorer...');

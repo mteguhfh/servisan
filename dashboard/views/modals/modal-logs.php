@@ -7,7 +7,7 @@
                 <span style="font-size: 12px; color: #64748b; font-weight: normal;">(50 baris terakhir)</span>
             </div>
             <div style="display: flex; gap: 6px;">
-                <button type="button" onclick="fetch('?action=open_logs'); showToast('Membuka folder logs di Explorer...');" style="background:#f1f5f9;border:1px solid #cbd5e1;padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer;color:#334155;">Open Folder</button>
+                <button type="button" onclick="apiFetch('?action=open_logs', { method: 'POST' }); showToast('Membuka folder logs di Explorer...');" style="background:#f1f5f9;border:1px solid #cbd5e1;padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer;color:#334155;">Open Folder</button>
                 <button type="button" onclick="loadLogs(currentLogType)" style="background:#0284c7;color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer;">Refresh</button>
                 <button type="button" onclick="document.getElementById('logsModal').classList.remove('show')" style="background:#f1f5f9;border:1px solid #cbd5e1;padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer;color:#64748b;">✕</button>
             </div>

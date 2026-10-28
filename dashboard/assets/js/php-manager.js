@@ -30,7 +30,7 @@ function loadPhpVersions() {
 
     installedList.innerHTML = '<div style="text-align:center;padding:16px;color:#64748b;font-size:12.5px;">Memindai runtime PHP yang terpasang...</div>';
 
-    fetch('?action=php_list')
+    apiFetch('?action=php_list')
         .then(function(res) { return res.json(); })
         .then(function(data) {
             if (!data.ok) {
@@ -155,7 +155,7 @@ function deletePhpVersion(target, version, btnEl) {
     const formData = new FormData();
     formData.append('target', target);
 
-    fetch('?action=php_delete', {
+    apiFetch('?action=php_delete', {
         method: 'POST',
         body: formData,
     })
@@ -245,7 +245,7 @@ function switchPhpVersion(target, btnEl) {
     const formData = new FormData();
     formData.append('target', target);
 
-    fetch('?action=php_switch', {
+    apiFetch('?action=php_switch', {
         method: 'POST',
         body: formData,
     })
@@ -351,7 +351,7 @@ function installPhpVersion(version, andSwitch, btnEl) {
         const s = String(elapsed % 60).padStart(2, '0');
         if (timerEl) timerEl.textContent = `${m}:${s}`;
 
-        fetch('?action=php_install_status&version=' + encodeURIComponent(version))
+        apiFetch('?action=php_install_status&version=' + encodeURIComponent(version))
             .then(function(r) { return r.json(); })
             .then(function(st) {
                 if (!isProcessingPhp) return;
@@ -399,7 +399,7 @@ function installPhpVersion(version, andSwitch, btnEl) {
         formData.append('switch', '1');
     }
 
-    fetch('?action=php_install', {
+    apiFetch('?action=php_install', {
         method: 'POST',
         body: formData,
     })

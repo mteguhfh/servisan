@@ -8,28 +8,44 @@ if (!isset($_GET['action'])) {
 
 $action = $_GET['action'];
 
+// Names and domains reach `servisan vhost ...` as argv and the hosts file,
+// so allowlist them instead of relying on escaping.
+if (!function_exists('valid_vhost_name')) {
+    function valid_vhost_name($name) {
+        return is_string($name) && preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/', $name) === 1;
+    }
+}
+
+if (!function_exists('valid_vhost_domain')) {
+    function valid_vhost_domain($domain) {
+        return is_string($domain)
+            && strlen($domain) <= 253
+            && preg_match('/^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$/', $domain) === 1
+            && strpos($domain, '..') === false;
+    }
+}
+
 // Handle vhost_list action (list registered virtual hosts)
 if ($action === 'vhost_list') {
-    $exe = get_servisan_cmd($docRoot);
-    $output = @shell_exec($exe . ' vhost list --json 2>&1');
-    $vhosts = json_decode($output ? $output : '', true);
-    header('Content-Type: application/json');
-    echo json_encode(array(
+    require_action_allowed($isLoopbackRequest, $dashboardToken, false, 'vhost_list');
+
+    $result = run_servisan_cli($docRoot, array('vhost', 'list', '--json'));
+    $vhosts = json_decode($result['stdout'], true);
+    respond_json(200, array(
         'ok' => is_array($vhosts),
         'vhosts' => is_array($vhosts) ? $vhosts : array(),
         'port' => isset($_SERVER['SERVER_PORT']) ? (int)$_SERVER['SERVER_PORT'] : 8080,
-        'raw' => $output,
+        'raw' => $result['output'],
     ));
-    exit;
 }
 
 // Handle vhost_detect action (inspect folder, detect framework and suggest domain)
 if ($action === 'vhost_detect') {
-    $path = isset($_GET['path']) ? trim($_GET['path']) : '';
+    require_action_allowed($isLoopbackRequest, $dashboardToken, false, 'vhost_detect');
+
+    $path = isset($_GET['path']) ? trim((string) $_GET['path']) : '';
     if ($path === '' || !is_dir($path)) {
-        header('Content-Type: application/json');
-        echo json_encode(array('ok' => false, 'error' => 'Path folder tidak ditemukan atau bukan direktori.'));
-        exit;
+        respond_json(400, array('ok' => false, 'error' => 'Path folder tidak ditemukan atau bukan direktori.'));
     }
     $publicDir = rtrim($path, '/\\') . DIRECTORY_SEPARATOR . 'public';
     $hasPublic = is_dir($publicDir);
@@ -53,8 +69,7 @@ if ($action === 'vhost_detect') {
         $slug = 'project';
     }
 
-    header('Content-Type: application/json');
-    echo json_encode(array(
+    respond_json(200, array(
         'ok' => true,
         'path' => $path,
         'name' => $slug,
@@ -62,79 +77,100 @@ if ($action === 'vhost_detect') {
         'doc_root' => $docRootVhost,
         'framework' => $framework,
     ));
-    exit;
 }
 
 // Handle vhost_add action
 if ($action === 'vhost_add') {
-    $exe = get_servisan_cmd($docRoot);
-    $path = isset($_POST['path']) ? trim($_POST['path']) : '';
-    $name = isset($_POST['name']) ? trim($_POST['name']) : '';
-    $domain = isset($_POST['domain']) ? trim($_POST['domain']) : '';
+    require_action_allowed($isLoopbackRequest, $dashboardToken, true, 'vhost_add');
+
+    $path = isset($_POST['path']) ? trim((string) $_POST['path']) : '';
+    $name = isset($_POST['name']) ? trim((string) $_POST['name']) : '';
+    $domain = isset($_POST['domain']) ? trim((string) $_POST['domain']) : '';
     if ($path === '') {
-        header('Content-Type: application/json');
-        echo json_encode(array('ok' => false, 'error' => 'Path project tidak boleh kosong.'));
-        exit;
+        respond_json(400, array('ok' => false, 'error' => 'Path project tidak boleh kosong.'));
     }
-    $args = ' ' . escapeshellarg($path);
+    if (!valid_project_path($path)) {
+        respond_json(400, array('ok' => false, 'error' => 'Path project tidak valid: ' . $path));
+    }
+    if ($name !== '' && !valid_vhost_name($name)) {
+        respond_json(400, array('ok' => false, 'error' => 'Nama vhost tidak valid: ' . $name));
+    }
+    if ($domain !== '' && !valid_vhost_domain($domain)) {
+        respond_json(400, array('ok' => false, 'error' => 'Domain tidak valid: ' . $domain));
+    }
+
+    $args = array('vhost', 'add', $path);
     if ($name !== '') {
-        $args .= ' --name ' . escapeshellarg($name);
+        $args[] = '--name';
+        $args[] = $name;
     }
     if ($domain !== '') {
-        $args .= ' --domain ' . escapeshellarg($domain);
+        $args[] = '--domain';
+        $args[] = $domain;
     }
-    $cmd = $exe . ' vhost add' . $args . ' 2>&1';
-    $output = @shell_exec($cmd);
-    header('Content-Type: application/json');
-    echo json_encode(array(
-        'ok' => true,
-        'cmd' => $cmd,
-        'output' => $output ? $output : '',
-    ));
-    exit;
+
+    $result = run_servisan_cli($docRoot, $args);
+    if ($result['exit_code'] !== 0) {
+        respond_json(500, array(
+            'ok' => false,
+            'error' => 'Gagal menambah vhost (exit code ' . $result['exit_code'] . ').',
+            'output' => $result['output'],
+        ));
+    }
+    respond_json(200, array('ok' => true, 'output' => $result['output']));
 }
 
 // Handle vhost_remove action
 if ($action === 'vhost_remove') {
-    $exe = get_servisan_cmd($docRoot);
-    $target = isset($_POST['target']) ? trim($_POST['target']) : '';
+    require_action_allowed($isLoopbackRequest, $dashboardToken, true, 'vhost_remove');
+
+    $target = isset($_POST['target']) ? trim((string) $_POST['target']) : '';
     if ($target === '') {
-        header('Content-Type: application/json');
-        echo json_encode(array('ok' => false, 'error' => 'Target vhost tidak boleh kosong.'));
-        exit;
+        respond_json(400, array('ok' => false, 'error' => 'Target vhost tidak boleh kosong.'));
     }
-    $cmd = $exe . ' vhost delete ' . escapeshellarg($target) . ' 2>&1';
-    $output = @shell_exec($cmd);
-    header('Content-Type: application/json');
-    echo json_encode(array(
-        'ok' => true,
-        'cmd' => $cmd,
-        'output' => $output ? $output : '',
-    ));
-    exit;
+    if (!valid_vhost_name($target) && !valid_vhost_domain($target)) {
+        respond_json(400, array('ok' => false, 'error' => 'Target vhost tidak valid: ' . $target));
+    }
+
+    $result = run_servisan_cli($docRoot, array('vhost', 'delete', $target));
+    if ($result['exit_code'] !== 0) {
+        respond_json(500, array(
+            'ok' => false,
+            'error' => 'Gagal menghapus vhost (exit code ' . $result['exit_code'] . ').',
+            'output' => $result['output'],
+        ));
+    }
+    respond_json(200, array('ok' => true, 'output' => $result['output']));
 }
 
 // Handle open_project_folder action (open folder in Windows File Explorer)
 if ($action === 'open_project_folder') {
-    $path = isset($_POST['path']) ? trim($_POST['path']) : '';
-    if ($path !== '' && is_dir($path) && $isWindows) {
-        pclose(popen('explorer ' . escapeshellarg($path), 'r'));
+    require_action_allowed($isLoopbackRequest, $dashboardToken, true, 'open_project_folder');
+
+    $path = isset($_POST['path']) ? trim((string) $_POST['path']) : '';
+    if ($path !== '' && !valid_project_path($path)) {
+        respond_json(400, array('ok' => false, 'error' => 'Path project tidak valid: ' . $path));
     }
-    header('Content-Type: application/json');
-    echo json_encode(array('ok' => true));
-    exit;
+    if ($path !== '' && $isWindows) {
+        pclose(popen('explorer.exe ' . escapeshellarg($path), 'r'));
+    }
+    respond_json(200, array('ok' => true));
 }
 
 // Handle open_project_terminal action (open terminal with Servisan environment at folder)
 if ($action === 'open_project_terminal') {
-    $path = isset($_POST['path']) ? trim($_POST['path']) : '';
-    if ($path !== '' && is_dir($path) && $isWindows) {
-        $exe = get_servisan_cmd($docRoot);
-        $title = 'Servisan Shell - ' . basename($path);
-        $cmd = 'start "' . $title . '" cmd.exe /k "cd /d "' . $path . '" && ' . $exe . ' shell"';
+    require_action_allowed($isLoopbackRequest, $dashboardToken, true, 'open_project_terminal');
+
+    $path = isset($_POST['path']) ? trim((string) $_POST['path']) : '';
+    if ($path !== '' && !valid_project_path($path)) {
+        respond_json(400, array('ok' => false, 'error' => 'Path project tidak valid: ' . $path));
+    }
+    if ($path !== '' && $isWindows) {
+        // valid_project_path() rejects quotes and cmd metacharacters, so the
+        // path and the executable stay literal arguments to `cd /d` and the
+        // shell command. No user text is concatenated unescaped.
+        $cmd = 'start "" cmd /k cd /d ' . escapeshellarg($path) . ' && ' . get_servisan_cmd() . ' shell';
         pclose(popen($cmd, 'r'));
     }
-    header('Content-Type: application/json');
-    echo json_encode(array('ok' => true));
-    exit;
+    respond_json(200, array('ok' => true));
 }

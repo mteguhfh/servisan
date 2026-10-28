@@ -112,7 +112,7 @@ function loadMigrateScan(fromPath) {
 
     const url = fromPath ? ('?action=migrate_scan&from=' + encodeURIComponent(fromPath)) : '?action=migrate_scan';
 
-    fetch(url)
+    apiFetch(url)
         .then(function(res) { return res.json(); })
         .then(function(data) {
             loading.style.display = 'none';
@@ -317,7 +317,7 @@ function startMigration() {
         }
     };
 
-    fetch('?action=migrate_import', {
+    apiFetch('?action=migrate_import', {
         method: 'POST',
         body: formData,
     })

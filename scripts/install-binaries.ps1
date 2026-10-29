@@ -76,12 +76,39 @@ function Download-And-Extract {
     Write-Host "  Downloading $Label..." -ForegroundColor Cyan
     Write-Host "  From: $Url" -ForegroundColor DarkGray
     
-    $webClient = New-Object System.Net.WebClient
-    $webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ServisanInstaller/1.0")
-    $webClient.DownloadFile($Url, $tempZip)
+    $userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    $tar  = Get-Command tar.exe -ErrorAction SilentlyContinue
+
+    $downloadSuccess = $false
+    if ($curl) {
+        & curl.exe -L -k -s -S -A $userAgent -o $tempZip $Url
+        if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $tempZip) -and ((Get-Item $tempZip).Length -gt 100000)) {
+            $downloadSuccess = $true
+        }
+    }
+
+    if (-not $downloadSuccess) {
+        Write-Host "  Using WebClient fallback..." -ForegroundColor Yellow
+        $webClient = New-Object System.Net.WebClient
+        $webClient.Headers.Add("User-Agent", $userAgent)
+        $webClient.DownloadFile($Url, $tempZip)
+    }
 
     Write-Host "  Extracting $Label..." -ForegroundColor Cyan
-    Expand-Archive -LiteralPath $tempZip -DestinationPath $extractTmp -Force
+    if (-not (Test-Path -LiteralPath $extractTmp)) {
+        New-Item -ItemType Directory -Path $extractTmp -Force | Out-Null
+    }
+    $extractSuccess = $false
+    if ($tar) {
+        & tar.exe -xf $tempZip -C $extractTmp 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            $extractSuccess = $true
+        }
+    }
+    if (-not $extractSuccess) {
+        Expand-Archive -LiteralPath $tempZip -DestinationPath $extractTmp -Force
+    }
 
     $sourceDir = $extractTmp
     if ($SubFolder -ne '') {
@@ -171,12 +198,12 @@ if ($useLaragon) {
     Write-Host "Downloading clean official portable runtimes (PHP & MariaDB/MySQL)..." -ForegroundColor Cyan
 
     # Official Windows PHP (8.3 Thread Safe x64)
-    $phpUrl = "https://windows.php.net/downloads/releases/php-8.3.35-Win32-vs16-x64.zip"
+    $phpUrl = "https://windows.php.net/downloads/releases/php-8.3.36-Win32-vs16-x64.zip"
     Download-And-Extract -Url $phpUrl -Destination $PhpDst -Label "PHP 8.3"
 
-    # Official MariaDB LTS portable package (Full binary compatibility with MySQL 8.x mysqld / mysqladmin)
-    $dbUrl = "https://archive.mariadb.org/mariadb-11.4.5/winx64-packages/mariadb-11.4.5-winx64.zip"
-    Download-And-Extract -Url $dbUrl -Destination $MysqlDst -SubFolder "mariadb-" -Label "MySQL/MariaDB Server"
+    # Official Oracle MySQL Community Server 8.4 LTS Windows x64 ZIP (Direct CDN Archive)
+    $dbUrl = "https://cdn.mysql.com/archives/mysql-8.4/mysql-8.4.3-winx64.zip"
+    Download-And-Extract -Url $dbUrl -Destination $MysqlDst -SubFolder "mysql-8.4" -Label "MySQL 8.4 LTS Community Server"
 
     if ($IncludePhpMyAdmin) {
         $pmaUrl = "https://files.phpmyadmin.net/phpMyAdmin/5.2.2/phpMyAdmin-5.2.2-all-languages.zip"
@@ -192,8 +219,9 @@ foreach ($dir in @($PhpDst, (Join-Path $MysqlDst 'bin'))) {
     if (Test-Path -LiteralPath $dir) {
         foreach ($dll in $vcDlls) {
             $src = Join-Path $sys32 $dll
-            if (Test-Path -LiteralPath $src) {
-                Copy-Item -LiteralPath $src -Destination (Join-Path $dir $dll) -Force -ErrorAction SilentlyContinue
+            $dst = Join-Path $dir $dll
+            if ((Test-Path -LiteralPath $src) -and (-not (Test-Path -LiteralPath $dst))) {
+                Copy-Item -LiteralPath $src -Destination $dst -Force -ErrorAction SilentlyContinue
             }
         }
     }

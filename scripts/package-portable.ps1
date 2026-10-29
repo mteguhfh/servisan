@@ -67,7 +67,12 @@ Copy-Item -LiteralPath (Join-Path $RepoRoot 'LICENSE') -Destination $Stage -Erro
 Copy-Tree -Source (Join-Path $RepoRoot 'assets') -Destination (Join-Path $Stage 'assets')
 Copy-Tree -Source (Join-Path $RepoRoot 'bin') -Destination (Join-Path $Stage 'bin')
 Copy-Tree -Source (Join-Path $RepoRoot 'config') -Destination (Join-Path $Stage 'config')
-Copy-Tree -Source (Join-Path $RepoRoot 'www') -Destination (Join-Path $Stage 'www')
+Copy-Tree -Source (Join-Path $RepoRoot 'dashboard') -Destination (Join-Path $Stage 'dashboard')
+
+# Prepare clean www folder (pure user projects)
+$stageWww = Join-Path $Stage 'www'
+New-Item -ItemType Directory -Path $stageWww -Force | Out-Null
+New-Item -ItemType File -Path (Join-Path $stageWww '.gitkeep') -Force | Out-Null
 
 # Empty runtime folders. Paired data/logs remain under the portable root.
 New-Item -ItemType Directory -Path (Join-Path $Stage 'data') -Force | Out-Null
@@ -84,7 +89,7 @@ if (Test-Path -LiteralPath (Join-Path $RepoRoot 'scripts')) {
 Write-Host "Bundling Visual C++ runtime DLLs (App-Local)..." -ForegroundColor Cyan
 $vcDlls = @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'msvcp140_atomic_wait.dll', 'msvcp140_codecvt_ids.dll', 'vcomp140.dll')
 $sys32 = "$env:SystemRoot\System32"
-foreach ($dir in @($Stage, (Join-Path $Stage 'bin\php'), (Join-Path $Stage 'bin\mysql\bin'))) {
+foreach ($dir in @((Join-Path $Stage 'bin\php'), (Join-Path $Stage 'bin\mysql\bin'))) {
     if (Test-Path -LiteralPath $dir) {
         foreach ($dll in $vcDlls) {
             $src = Join-Path $sys32 $dll
